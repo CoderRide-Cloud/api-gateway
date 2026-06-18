@@ -1,0 +1,103 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: api-gateway
+  cloud:
+    gateway:
+      discovery:
+        locator:
+          enabled: true
+          lower-case-service-id: true
+      routes:
+        - id: auth-service
+          uri: lb://auth-service
+          predicates:
+            - Path=/api/v1/auth/**
+          filters:
+            - JwtAuthenticationFilter
+        - id: member-service
+          uri: lb://member-service
+          predicates:
+            - Path=/api/v1/members/**
+          filters:
+            - JwtAuthenticationFilter
+        - id: project-service
+          uri: lb://project-service
+          predicates:
+            - Path=/api/v1/projects/**
+          filters:
+            - JwtAuthenticationFilter
+        - id: event-service
+          uri: lb://event-service
+          predicates:
+            - Path=/api/v1/events/**
+          filters:
+            - JwtAuthenticationFilter
+        - id: openapi-auth
+          uri: lb://auth-service
+          predicates:
+            - Path=/v3/api-docs/auth-service
+          filters:
+            - RewritePath=/v3/api-docs/auth-service, /v3/api-docs
+        - id: openapi-member
+          uri: lb://member-service
+          predicates:
+            - Path=/v3/api-docs/member-service
+          filters:
+            - RewritePath=/v3/api-docs/member-service, /v3/api-docs
+        - id: openapi-project
+          uri: lb://project-service
+          predicates:
+            - Path=/v3/api-docs/project-service
+          filters:
+            - RewritePath=/v3/api-docs/project-service, /v3/api-docs
+        - id: openapi-skill
+          uri: lb://skill-service
+          predicates:
+            - Path=/v3/api-docs/skill-service
+          filters:
+            - RewritePath=/v3/api-docs/skill-service, /v3/api-docs
+        - id: openapi-event
+          uri: lb://event-service
+          predicates:
+            - Path=/v3/api-docs/event-service
+          filters:
+            - RewritePath=/v3/api-docs/event-service, /v3/api-docs
+        - id: openapi-role
+          uri: lb://role-service
+          predicates:
+            - Path=/v3/api-docs/role-service
+          filters:
+            - RewritePath=/v3/api-docs/role-service, /v3/api-docs
+        - id: openapi-notification
+          uri: lb://notification-service
+          predicates:
+            - Path=/v3/api-docs/notification-service
+          filters:
+            - RewritePath=/v3/api-docs/notification-service, /v3/api-docs
+            
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+    urls:
+      - name: auth-service
+        url: /v3/api-docs/auth-service
+      - name: member-service
+        url: /v3/api-docs/member-service
+      - name: project-service
+        url: /v3/api-docs/project-service
+      - name: skill-service
+        url: /v3/api-docs/skill-service
+      - name: event-service
+        url: /v3/api-docs/event-service
+      - name: role-service
+        url: /v3/api-docs/role-service
+      - name: notification-service
+        url: /v3/api-docs/notification-service
+
+eureka:
+  client:
+    serviceUrl:
+      defaultZone: http://localhost:8761/eureka/
