@@ -6,6 +6,22 @@ spring:
     name: api-gateway
   cloud:
     gateway:
+      globalcors:
+        corsConfigurations:
+          '[/**]':
+            allowedOrigins:
+              - "http://localhost:3000"
+              - "http://localhost:8080"
+            allowedMethods:
+              - GET
+              - POST
+              - PUT
+              - DELETE
+              - OPTIONS
+              - PATCH
+            allowedHeaders:
+              - "*"
+            allowCredentials: true
       discovery:
         locator:
           enabled: true
@@ -27,6 +43,36 @@ spring:
           uri: lb://project-service
           predicates:
             - Path=/api/v1/projects/**
+          filters:
+            - JwtAuthenticationFilter
+        - id: tag-service
+          uri: lb://project-service
+          predicates:
+            - Path=/api/v1/tags/**
+          filters:
+            - JwtAuthenticationFilter
+        - id: skill-service
+          uri: lb://skill-service
+          predicates:
+            - Path=/api/v1/skills/**
+          filters:
+            - JwtAuthenticationFilter
+        - id: role-service
+          uri: lb://role-service
+          predicates:
+            - Path=/api/v1/roles/**
+          filters:
+            - JwtAuthenticationFilter
+        - id: user-service
+          uri: lb://auth-service
+          predicates:
+            - Path=/api/v1/users/**
+          filters:
+            - JwtAuthenticationFilter
+        - id: notification-service
+          uri: lb://notification-service
+          predicates:
+            - Path=/api/v1/notifications/**
           filters:
             - JwtAuthenticationFilter
         - id: event-service
@@ -101,3 +147,6 @@ eureka:
   client:
     serviceUrl:
       defaultZone: http://localhost:8761/eureka/
+
+jwt:
+  secret: ${JWT_SECRET:thisisaverysecuresecretkeythatisverylongandsecure!}

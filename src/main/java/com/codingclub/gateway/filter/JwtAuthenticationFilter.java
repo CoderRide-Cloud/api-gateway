@@ -5,10 +5,15 @@ import io.jsonwebtoken.Claims;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.cloud.gateway.filter.GatewayFilter;
 import org.springframework.cloud.gateway.filter.factory.AbstractGatewayFilterFactory;
+import org.springframework.core.io.buffer.DataBuffer;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.server.ServerWebExchange;
+import reactor.core.publisher.Mono;
+
+import java.nio.charset.StandardCharsets;
 
 @Component
 public class JwtAuthenticationFilter extends AbstractGatewayFilterFactory<JwtAuthenticationFilter.Config> {
@@ -25,12 +30,16 @@ public class JwtAuthenticationFilter extends AbstractGatewayFilterFactory<JwtAut
         return (exchange, chain) -> {
             String path = exchange.getRequest().getURI().getPath();
 
-            // Skip authentication for auth-service login/callback endpoints
-            if (path.startsWith("/api/v1/auth/github")) {
+            if (path.startsWith("/api/v1/auth/github") && !path.endsWith("/repos")) {
                 return chain.filter(exchange);
             }
 
+            boolean isPublic = isPublicReadPath(exchange.getRequest().getMethod().name(), path);
+
             if (!exchange.getRequest().getHeaders().containsKey(HttpHeaders.AUTHORIZATION)) {
+                if (isPublic) {
+                    return chain.filter(exchange);
+                }
                 return onError(exchange, "Missing authorization header", HttpStatus.UNAUTHORIZED);
             }
 
@@ -38,22 +47,37 @@ public class JwtAuthenticationFilter extends AbstractGatewayFilterFactory<JwtAut
             if (authHeader != null && authHeader.startsWith("Bearer ")) {
                 authHeader = authHeader.substring(7);
             } else {
+                if (isPublic) {
+                    return chain.filter(exchange);
+                }
                 return onError(exchange, "Invalid authorization header format", HttpStatus.UNAUTHORIZED);
             }
 
             if (!jwtUtil.validateToken(authHeader)) {
+                if (isPublic) {
+                    return chain.filter(exchange);
+                }
                 return onError(exchange, "Invalid or expired token", HttpStatus.UNAUTHORIZED);
             }
 
             Claims claims = jwtUtil.extractAllClaims(authHeader);
             String userId = claims.getSubject();
             String role = claims.get("role", String.class);
+            String permissions = claims.get("permissions", String.class);
+            Object position = claims.get("position");
+            Object isLead = claims.get("isLead");
+            Object isActive = claims.get("isActive");
+            Object customRoleId = claims.get("customRoleId");
 
-            // Mutate the request to append the headers
             ServerWebExchange mutatedExchange = exchange.mutate().request(
                     exchange.getRequest().mutate()
                             .header("X-User-Id", userId)
-                            .header("X-User-Role", role)
+                            .header("X-User-Role", role != null ? role : "")
+                            .header("X-User-Permissions", permissions != null ? permissions : "")
+                            .header("X-User-Position", position != null ? String.valueOf(position) : "0")
+                            .header("X-User-Is-Lead", isLead != null ? String.valueOf(isLead) : "false")
+                            .header("X-User-Is-Active", isActive != null ? String.valueOf(isActive) : "true")
+                            .header("X-User-Custom-Role-Id", customRoleId != null ? String.valueOf(customRoleId) : "")
                             .build()
             ).build();
 
@@ -61,12 +85,51 @@ public class JwtAuthenticationFilter extends AbstractGatewayFilterFactory<JwtAut
         };
     }
 
-    private reactor.core.publisher.Mono<Void> onError(ServerWebExchange exchange, String err, HttpStatus httpStatus) {
+    private boolean isPublicReadPath(String method, String path) {
+        if (!"GET".equals(method)) {
+            return false;
+        }
+
+        if (path.equals("/api/v1/members") || path.matches("/api/v1/members/\\d+")
+                || path.matches("/api/v1/members/user/\\d+")) {
+            return true;
+        }
+
+        if (path.startsWith("/api/v1/tags")) {
+            return true;
+        }
+
+        if (path.startsWith("/api/v1/skills")) {
+            return true;
+        }
+
+        if (path.startsWith("/api/v1/events")) {
+            return true;
+        }
+
+        if (path.equals("/api/v1/projects") || path.matches("/api/v1/projects/\\d+")) {
+            return true;
+        }
+
+        if (path.equals("/api/v1/roles") || path.matches("/api/v1/roles/\\d+")) {
+            return true;
+        }
+
+        return false;
+    }
+
+    private Mono<Void> onError(ServerWebExchange exchange, String message, HttpStatus httpStatus) {
         exchange.getResponse().setStatusCode(httpStatus);
-        return exchange.getResponse().setComplete();
+        exchange.getResponse().getHeaders().setContentType(MediaType.APPLICATION_JSON);
+
+        String body = "{\"status\":" + httpStatus.value()
+                + ",\"error\":\"" + httpStatus.getReasonPhrase()
+                + "\",\"message\":\"" + message + "\"}";
+        byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
+        DataBuffer buffer = exchange.getResponse().bufferFactory().wrap(bytes);
+        return exchange.getResponse().writeWith(Mono.just(buffer));
     }
 
     public static class Config {
-        // Put configuration properties here
     }
 }
