@@ -4,6 +4,7 @@ import org.springframework.cloud.gateway.filter.GatewayFilterChain;
 import org.springframework.cloud.gateway.filter.GlobalFilter;
 import org.springframework.core.Ordered;
 import org.springframework.http.HttpStatus;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.web.server.ServerWebExchange;
 import reactor.core.publisher.Mono;
@@ -31,7 +32,9 @@ public class RateLimitFilter implements GlobalFilter, Ordered {
         String key = clientKey + ":" + (path.startsWith("/api/v1/auth") ? "auth" : "api");
 
         int limit = path.startsWith("/api/v1/auth") ? 50 : 100;
-        long windowMs = path.startsWith("/api/v1/auth") ? Duration.ofMinutes(5).toMillis() : Duration.ofMinutes(1).toMillis();
+        long windowMs = path.startsWith("/api/v1/auth")
+                ? Duration.ofMinutes(5).toMillis()
+                : Duration.ofMinutes(1).toMillis();
 
         WindowCounter counter = counters.computeIfAbsent(key, k -> new WindowCounter());
         if (!counter.tryConsume(limit, windowMs)) {
@@ -42,13 +45,24 @@ public class RateLimitFilter implements GlobalFilter, Ordered {
         return chain.filter(exchange);
     }
 
+    /**
+     * FIXED: Memory leak — previously the ConcurrentHashMap grew unboundedly as new IP
+     * addresses connected. This scheduled task evicts entries whose window has long expired.
+     * Runs every 5 minutes.
+     */
+    @Scheduled(fixedDelay = 300_000)
+    public void evictExpiredCounters() {
+        long evictBefore = System.currentTimeMillis() - Duration.ofMinutes(10).toMillis();
+        counters.entrySet().removeIf(entry -> entry.getValue().windowStart < evictBefore);
+    }
+
     @Override
     public int getOrder() {
         return -200;
     }
 
     private static class WindowCounter {
-        private long windowStart = System.currentTimeMillis();
+        volatile long windowStart = System.currentTimeMillis();
         private final AtomicInteger count = new AtomicInteger(0);
 
         synchronized boolean tryConsume(int limit, long windowMs) {

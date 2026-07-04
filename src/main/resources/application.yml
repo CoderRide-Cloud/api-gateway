@@ -22,6 +22,13 @@ spring:
             allowedHeaders:
               - "*"
             allowCredentials: true
+      # Gateway upstream timeouts — prevents slow services from hanging the gateway
+      httpclient:
+        connect-timeout: 3000
+        response-timeout: 30s
+        pool:
+          type: elastic
+          max-idle-time: 15s
       discovery:
         locator:
           enabled: true
@@ -123,7 +130,7 @@ spring:
             - Path=/v3/api-docs/notification-service
           filters:
             - RewritePath=/v3/api-docs/notification-service, /v3/api-docs
-            
+
 springdoc:
   swagger-ui:
     path: /swagger-ui.html
@@ -147,6 +154,10 @@ eureka:
   client:
     serviceUrl:
       defaultZone: http://localhost:8761/eureka/
+    registry-fetch-interval-seconds: 10
+  instance:
+    lease-renewal-interval-in-seconds: 10
+    lease-expiration-duration-in-seconds: 30
 
 jwt:
   secret: ${JWT_SECRET:thisisaverysecuresecretkeythatisverylongandsecure!}

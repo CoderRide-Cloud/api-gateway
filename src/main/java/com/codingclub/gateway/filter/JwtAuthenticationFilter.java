@@ -53,14 +53,23 @@ public class JwtAuthenticationFilter extends AbstractGatewayFilterFactory<JwtAut
                 return onError(exchange, "Invalid authorization header format", HttpStatus.UNAUTHORIZED);
             }
 
-            if (!jwtUtil.validateToken(authHeader)) {
+            // OPTIMIZED: Parse JWT claims exactly once per request.
+            // Previously: validateToken() parsed claims, then extractAllClaims() parsed them again.
+            Claims claims;
+            try {
+                claims = jwtUtil.extractAllClaims(authHeader);
+                // Check expiry from the already-parsed claims (no second parse)
+                if (claims.getExpiration().before(new java.util.Date())) {
+                    if (isPublic) return chain.filter(exchange);
+                    return onError(exchange, "Invalid or expired token", HttpStatus.UNAUTHORIZED);
+                }
+            } catch (Exception e) {
                 if (isPublic) {
                     return chain.filter(exchange);
                 }
                 return onError(exchange, "Invalid or expired token", HttpStatus.UNAUTHORIZED);
             }
 
-            Claims claims = jwtUtil.extractAllClaims(authHeader);
             String userId = claims.getSubject();
             String role = claims.get("role", String.class);
             String permissions = claims.get("permissions", String.class);
